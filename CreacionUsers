@@ -1,5 +1,3 @@
-
-
 $OUUsuarios = "OU=Usuarios,DC=sistemaoperativo,DC=com"
 
 $contrasenaInicialPlano = 'S00-usc0:.,'
@@ -9,7 +7,7 @@ $contrasenaSegura = ConvertTo-SecureString $contrasenaInicialPlano -AsPlainText 
 # Obtiene el nombre DNS del dominio actual para construir el UPN
 $dominioDNS = (Get-ADDomain).DNSRoot
 
-# Nombres de los grupos (Asegúrate de que estos grupos existan en tu AD)
+# Nombres de los grupos 
 $groupRectoria = "Rectoria - GP"
 $groupTH = "TH - GP"
 $groupSoftware = "Software - GP"
@@ -63,7 +61,6 @@ else {
         $username = "Usuario$nuevoNumFormato"
         $displayName = "Usuario $nuevoNumFormato"
 
-        # Uso de ${} para garantizar que PowerShell interprete la variable correctamente
         Write-Host "Creando ${username}..."
 
         # Creación del usuario
@@ -165,7 +162,6 @@ while ($true) {
             # Asignación de grupo
             Add-ADGroupMember -Identity $grupoSeleccionado -Members $username -ErrorAction SilentlyContinue
             $usuariosCreados++
-            # Corrección: Uso de ${} para evitar errores de ParserError
             Write-Host " -> Creado y asignado a ${grupoSeleccionado}: ${username} (Secuencia: ${ultimo})" -ForegroundColor DarkGray
         }
         catch {
