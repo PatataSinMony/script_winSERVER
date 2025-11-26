@@ -2,41 +2,41 @@
 # CONFIGURACIÓN DE OUs Y GRUPOS DEL DOMINIO
 # ================================================================
 
-# OU donde irán los usuarios creados automáticamente
+# OU donde irán todos los usuarios generados
 $OUUsuarios = "OU=Usuarios-OU,DC=software,DC=com"
 
-# Contraseña inicial para los usuarios
+# Contraseña inicial que se asignará a todos los usuarios
 $contrasenaInicialPlano = 'S00-usc0:.,'
 $contrasenaSegura = ConvertTo-SecureString $contrasenaInicialPlano -AsPlainText -Force
 
 # Nombre DNS del dominio
 $dominioDNS = (Get-ADDomain).DNSRoot
 
-# Nombres de los grupos de cada área
-$groupRectoria = "Rectoria-GRP"
-$groupTH = "TH-GRP"
-$groupSoftware = "Software-GRP"
+# Grupos disponibles dentro de sus respectivas OUs
+$groupRectoria  = "Rectoria-GRP"
+$groupTH        = "TH-GRP"
+$groupSoftware  = "Software-GRP"
 
 # ================================================================
-# FUNCIÓN PARA OBTENER EL ÚLTIMO NÚMERO USADO EN LA SECUENCIA
+# FUNCIÓN PARA OBTENER EL ÚLTIMO NÚMERO DE USUARIO
 # ================================================================
 
 function Obtener-UltimoNumeroUsuario {
 
-    # Se listan usuarios cuyo SamAccountName inicia con "Usuario"
+    # Obtiene usuarios en la OU cuyo nombre empieza con "Usuario"
     $usuarios = Get-ADUser -Filter 'SamAccountName -like "Usuario*"' `
                 -SearchBase $OUUsuarios |
                 Select-Object -ExpandProperty SamAccountName -ErrorAction SilentlyContinue
 
     if (-not $usuarios -or $usuarios.Count -eq 0) { return 0 }
 
-    # Extrae el número final (ejemplo: Usuario51 -> 51)
+    # Extrae el número al final del nombre, ej: Usuario52 -> 52
     $numeros = foreach ($u in $usuarios) {
         if ($u -match "^Usuario(\d+)$") { [int]$matches[1] }
     }
 
     if ($numeros) {
-        ($numeros | Measure-Object -Maximum).Maximum
+        return ($numeros | Measure-Object -Maximum).Maximum
     }
     else {
         return 0
@@ -44,21 +44,19 @@ function Obtener-UltimoNumeroUsuario {
 }
 
 # ================================================================
-# CREACIÓN INICIAL DE 50 USUARIOS (Usuario01 – Usuario50)
+# CREACIÓN INICIAL (Usuario01 – Usuario50)
 # ================================================================
 
 $numUsuariosIniciales = 50
 $primerUsuarioNombre = "Usuario01"
 
-# Verificación si ya existe Usuario01
-$usuarioInicialExiste = Get-ADUser -Filter "SamAccountName -eq '$primerUsuarioNombre'" `
-                          -ErrorAction SilentlyContinue
+$usuarioInicialExiste = Get-ADUser -Filter "SamAccountName -eq '$primerUsuarioNombre'" -ErrorAction SilentlyContinue
 
 if ($usuarioInicialExiste) {
 
     Write-Host "--------------------------------------------------------" -ForegroundColor Yellow
-    Write-Host "LOS USUARIOS INICIALES YA EXISTEN (Usuario01–Usuario50)." -ForegroundColor Red
-    Write-Host "Se omite su creación y se continúa con la parte interactiva." -ForegroundColor Red
+    Write-Host "Los usuarios iniciales (Usuario01–Usuario50) ya existen." -ForegroundColor Red
+    Write-Host "Se procede directamente al modo interactivo." -ForegroundColor Red
     Write-Host "--------------------------------------------------------" -ForegroundColor Yellow
 }
 else {
@@ -82,7 +80,7 @@ else {
             -Path $OUUsuarios `
             -ChangePasswordAtLogon $true -ErrorAction Stop
 
-        # Asignación automática según rango
+        # Asignación por rangos
         if ($i -ge 1 -and $i -le 10) {
             Add-ADGroupMember -Identity $groupRectoria -Members $username
             Write-Host "  -> Asignado a $groupRectoria"
@@ -97,11 +95,11 @@ else {
         }
     }
 
-    Write-Host "Usuarios iniciales creados exitosamente." -ForegroundColor Green
+    Write-Host "Usuarios iniciales creados con éxito." -ForegroundColor Green
 }
 
 # ================================================================
-# MODO INTERACTIVO PARA CREAR NUEVOS LOTES DE USUARIOS
+# MODO INTERACTIVO PARA NUEVOS LOTES
 # ================================================================
 
 while ($true) {
@@ -110,21 +108,21 @@ while ($true) {
     $respuesta = Read-Host "¿Desea crear más usuarios? (si/no)"
 
     if ($respuesta -notin @("si","SI","Si","s","S")) {
-        Write-Host "Proceso completado." -ForegroundColor Green
+        Write-Host "Proceso finalizado." -ForegroundColor Green
         break
     }
 
     $cantidad = Read-Host "¿Cuántos usuarios desea crear?"
 
     if (-not ($cantidad -as [int]) -or ([int]$cantidad -le 0)) {
-        Write-Host "Valor inválido. Ingrese un número mayor a cero." -ForegroundColor Red
+        Write-Host "Valor inválido. Ingrese un número válido." -ForegroundColor Red
         continue
     }
 
     $cantidad = [int]$cantidad
 
     Write-Host ""
-    Write-Host "Elija el grupo al que se asignarán los usuarios:"
+    Write-Host "Asigne los usuarios a un grupo:"
     Write-Host "1 = Rectoria-GRP"
     Write-Host "2 = TH-GRP"
     Write-Host "3 = Software-GRP"
@@ -145,11 +143,11 @@ while ($true) {
     $ultimo = Obtener-UltimoNumeroUsuario
     $usuariosCreados = 0
 
-    Write-Host "Creando $cantidad usuarios a partir del número $($ultimo + 1)..." -ForegroundColor Cyan
+    Write-Host "Creando $cantidad usuarios a partir de: Usuario$($ultimo + 1)" -ForegroundColor Cyan
 
     for ($x = 1; $x -le $cantidad; $x++) {
 
-        $ultimo = $ultimo + 1
+        $ultimo++
         $nuevoNumFormato = "$ultimo"
         $username = "Usuario$nuevoNumFormato"
         $displayName = "Usuario $nuevoNumFormato"
@@ -167,15 +165,16 @@ while ($true) {
 
             Add-ADGroupMember -Identity $grupoSeleccionado -Members $username
 
-            Write-Host " -> $username creado y asignado a $grupoSeleccionado" -ForegroundColor DarkGray
+            Write-Host (" -> Creado: {0} (Grupo: {1})" -f $username, $grupoSeleccionado) -ForegroundColor DarkGray
             $usuariosCreados++
+
         }
         catch {
-            Write-Host "ERROR creando $username: $($_.Exception.Message)" -ForegroundColor Red
-            $ultimo = $ultimo - 1
+            Write-Host ("ERROR creando {0}: {1}" -f $username, $_.Exception.Message) -ForegroundColor Red
+            $ultimo--
             break
         }
     }
 
-    Write-Host "Usuarios creados en este lote: $usuariosCreados" -ForegroundColor Cyan
+    Write-Host "Total de usuarios creados en este lote: $usuariosCreados" -ForegroundColor Cyan
 }
