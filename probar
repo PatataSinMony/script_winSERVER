@@ -1,0 +1,164 @@
+
+$OUUsuarios = "OU=Usuarios-OU,DC=software,DC=com"
+
+$contrasenasecundaria = 'ABCDEFGHIJK123.*'
+$contrasenaSeguraDos = ConvertTo-SecureString $contrasenasecundaria -AsPlainText -Force
+$contrasenaInicialPlano = 'S00-usc0:.,'
+$contrasenaSegura = ConvertTo-SecureString $contrasenaInicialPlano -AsPlainText -Force
+
+# Nombre DNS del dominio
+$dominioDNS = (Get-ADDomain).DNSRoot
+
+# Grupos disponibles dentro de sus respectivas OUs
+$groupRectoria  = "Rectoria-GRP"
+$groupTH        = "TH-GRP"
+$groupSoftware  = "Software-GRP"
+
+function Obtener-UltimoNumeroUsuario {
+
+    $usuarios = Get-ADUser -Filter 'SamAccountName -like "Usuario*"' `
+                -SearchBase $OUUsuarios |
+                Select-Object -ExpandProperty SamAccountName -ErrorAction SilentlyContinue
+
+    if (-not $usuarios -or $usuarios.Count -eq 0) { return 0 }
+
+    $numeros = foreach ($u in $usuarios) {
+        if ($u -match "^Usuario(\d+)$") { [int]$matches[1] }
+    }
+
+    if ($numeros) {
+        return ($numeros | Measure-Object -Maximum).Maximum
+    }
+    else {
+        return 0
+    }
+}
+
+$numUsuariosIniciales = 50
+$primerUsuarioNombre = "Usuario01"
+
+$usuarioInicialExiste = Get-ADUser -Filter "SamAccountName -eq '$primerUsuarioNombre'" -ErrorAction SilentlyContinue
+
+if ($usuarioInicialExiste) {
+
+    Write-Host "--------------------------------------------------------" -ForegroundColor Yellow
+    Write-Host "Los usuarios iniciales (Usuario01–Usuario50) ya existen." -ForegroundColor Red
+    Write-Host "Se procede directamente al modo interactivo." -ForegroundColor Red
+    Write-Host "--------------------------------------------------------" -ForegroundColor Yellow
+}
+else {
+
+    Write-Host "Creando los primeros $numUsuariosIniciales usuarios..." -ForegroundColor Green
+
+    for ($i = 1; $i -le $numUsuariosIniciales; $i++) {
+
+        $nuevoNumFormato = "{0:d2}" -f $i
+        $username = "Usuario$nuevoNumFormato"
+        $displayName = "Usuario $nuevoNumFormato"
+
+        Write-Host "Creando $username ..."
+
+        New-ADUser `
+            -Name $displayName `
+            -SamAccountName $username `
+            -UserPrincipalName "$username@$dominioDNS" `
+            -AccountPassword $contrasenaSegura `
+            -Enabled $true `
+            -Path $OUUsuarios `
+            -ChangePasswordAtLogon $true -ErrorAction Stop
+
+        # Asignación por rangos
+        if ($i -ge 1 -and $i -le 10) {
+            Add-ADGroupMember -Identity $groupRectoria -Members $username
+            Write-Host "  -> Asignado a $groupRectoria"
+        }
+        elseif ($i -ge 11 -and $i -le 30) {
+            Add-ADGroupMember -Identity $groupTH -Members $username
+            Write-Host "  -> Asignado a $groupTH"
+        }
+        else {
+            Add-ADGroupMember -Identity $groupSoftware -Members $username
+            Write-Host "  -> Asignado a $groupSoftware"
+        }
+    }
+
+    Write-Host "Usuarios iniciales creados con éxito." -ForegroundColor Green
+}
+
+
+while ($true) {
+
+    Write-Host ""
+    $respuesta = Read-Host "¿Desea crear más usuarios? (si/no)"
+
+    if ($respuesta -notin @("si","SI","Si","s","S")) {
+        Write-Host "Proceso finalizado." -ForegroundColor Green
+        break
+    }
+
+    $cantidad = Read-Host "¿Cuántos usuarios desea crear?"
+
+    if (-not ($cantidad -as [int]) -or ([int]$cantidad -le 0)) {
+        Write-Host "Valor inválido. Ingrese un número válido." -ForegroundColor Red
+        continue
+    }
+
+    $cantidad = [int]$cantidad
+
+    Write-Host ""
+    Write-Host "Asigne los usuarios a un grupo:"
+    Write-Host "1 = Rectoria-GRP"
+    Write-Host "2 = TH-GRP"
+    Write-Host "3 = Software-GRP"
+    Write-Host ""
+
+    $opcionGrupo = Read-Host "Seleccione (1/2/3)"
+
+    switch ($opcionGrupo) {
+        "1" { $grupoSeleccionado = $groupRectoria }
+        "2" { $grupoSeleccionado = $groupTH }
+        "3" { $grupoSeleccionado = $groupSoftware }
+        default {
+            Write-Host "Opción inválida." -ForegroundColor Red
+            continue
+        }
+    }
+
+    $ultimo = Obtener-UltimoNumeroUsuario
+    $usuariosCreados = 0
+
+    Write-Host "Creando $cantidad usuarios a partir de: Usuario$($ultimo + 1)" -ForegroundColor Cyan
+
+    for ($x = 1; $x -le $cantidad; $x++) {
+
+        $ultimo++
+        $nuevoNumFormato = "$ultimo"
+        $username = "Usuario$nuevoNumFormato"
+        $displayName = "Usuario $nuevoNumFormato"
+
+        try {
+
+            New-ADUser `
+                -Name $displayName `
+                -SamAccountName $username `
+                -UserPrincipalName "$username@$dominioDNS" `
+                -AccountPassword $contrasenaSeguraDos `
+                -Enabled $true `
+                -Path $OUUsuarios `
+                -ChangePasswordAtLogon $true -ErrorAction Stop
+
+            Add-ADGroupMember -Identity $grupoSeleccionado -Members $username
+
+            Write-Host (" -> Creado: {0} (Grupo: {1})" -f $username, $grupoSeleccionado) -ForegroundColor DarkGray
+            $usuariosCreados++
+
+        }
+        catch {
+            Write-Host ("ERROR creando {0}: {1}" -f $username, $_.Exception.Message) -ForegroundColor Red
+            $ultimo--
+            break
+        }
+    }
+
+    Write-Host "Total de usuarios creados en este lote: $usuariosCreados" -ForegroundColor Cyan
+}
