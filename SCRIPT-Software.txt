@@ -1,11 +1,8 @@
-# ================================================================
-# CONFIGURACIÓN DE OUs Y GRUPOS DEL DOMINIO
-# ================================================================
 
-# OU donde irán todos los usuarios generados
 $OUUsuarios = "OU=Usuarios-OU,DC=software,DC=com"
 
-# Contraseña inicial que se asignará a todos los usuarios
+$contrasenasecundaria = 'ABCDEFGHIJK123.*'
+$contrasenaSeguraDos = ConvertTo-SecureString $contrasenasecundaria -AsPlainText -Force
 $contrasenaInicialPlano = 'S00-usc0:.,'
 $contrasenaSegura = ConvertTo-SecureString $contrasenaInicialPlano -AsPlainText -Force
 
@@ -17,20 +14,14 @@ $groupRectoria  = "Rectoria-GRP"
 $groupTH        = "TH-GRP"
 $groupSoftware  = "Software-GRP"
 
-# ================================================================
-# FUNCIÓN PARA OBTENER EL ÚLTIMO NÚMERO DE USUARIO
-# ================================================================
-
 function Obtener-UltimoNumeroUsuario {
 
-    # Obtiene usuarios en la OU cuyo nombre empieza con "Usuario"
     $usuarios = Get-ADUser -Filter 'SamAccountName -like "Usuario*"' `
                 -SearchBase $OUUsuarios |
                 Select-Object -ExpandProperty SamAccountName -ErrorAction SilentlyContinue
 
     if (-not $usuarios -or $usuarios.Count -eq 0) { return 0 }
 
-    # Extrae el número al final del nombre, ej: Usuario52 -> 52
     $numeros = foreach ($u in $usuarios) {
         if ($u -match "^Usuario(\d+)$") { [int]$matches[1] }
     }
@@ -42,10 +33,6 @@ function Obtener-UltimoNumeroUsuario {
         return 0
     }
 }
-
-# ================================================================
-# CREACIÓN INICIAL (Usuario01 – Usuario50)
-# ================================================================
 
 $numUsuariosIniciales = 50
 $primerUsuarioNombre = "Usuario01"
@@ -98,9 +85,6 @@ else {
     Write-Host "Usuarios iniciales creados con éxito." -ForegroundColor Green
 }
 
-# ================================================================
-# MODO INTERACTIVO PARA NUEVOS LOTES
-# ================================================================
 
 while ($true) {
 
@@ -158,7 +142,7 @@ while ($true) {
                 -Name $displayName `
                 -SamAccountName $username `
                 -UserPrincipalName "$username@$dominioDNS" `
-                -AccountPassword $contrasenaSegura `
+                -AccountPassword $contrasenaSeguraDos `
                 -Enabled $true `
                 -Path $OUUsuarios `
                 -ChangePasswordAtLogon $true -ErrorAction Stop
